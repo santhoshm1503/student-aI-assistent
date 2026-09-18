@@ -1,24 +1,39 @@
 import os
 import json
 import sqlite3
+
 from dotenv import load_dotenv
 from google import genai
+
 from . import tools
 
-# Load API key
+
+# ==========================================
+# GEMINI SETUP
+# ==========================================
+
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 client = genai.Client(
     api_key=os.getenv("GEMINI_API_KEY")
 )
 
-# ---------------- DATABASE ----------------
+MODEL = "gemini-3.5-flash-lite"
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "memory.db")
+
+# ==========================================
+# DATABASE
+# ==========================================
+
+DB_PATH = os.path.join(
+    os.path.dirname(__file__),
+    "memory.db"
+)
 
 
 def init_database():
     connection = sqlite3.connect(DB_PATH)
+
     cursor = connection.cursor()
 
     cursor.execute("""
@@ -35,12 +50,16 @@ def init_database():
 init_database()
 
 
-# ---------------- AI PROMPT ----------------
+# ==========================================
+# AI SYSTEM PROMPT
+# ==========================================
 
 SYSTEM_PROMPT = """
-You are MAVIX AI, a desktop AI assistant for students.
+You are MAVIX AI, a fast desktop AI assistant for students.
 
-Choose exactly ONE capability:
+Understand natural-language requests and choose exactly ONE capability.
+
+Available capabilities:
 
 general_answer
 screen_context
@@ -50,7 +69,9 @@ vtop_action
 save_memory
 recall_memory
 
-Return ONLY valid JSON:
+Return ONLY valid JSON.
+
+Format:
 
 {
   "capability": "...",
@@ -58,67 +79,183 @@ Return ONLY valid JSON:
   "reply": ""
 }
 
+For file_operation, available actions are:
+
+create_folder
+create_file
+open_app
+open_file
+move_file
+copy
+rename
+delete
+find
+list
+merge
+
 Examples:
 
 User: What is CPU scheduling?
--> {"capability":"general_answer","params":{},"reply":"..."}
 
-User: Search operating system scheduling
--> {"capability":"browser_search","params":{"query":"operating system scheduling"},"reply":""}
+{
+  "capability": "general_answer",
+  "params": {},
+  "reply": "CPU scheduling is..."
+}
 
 User: Create a folder called OS Notes
--> {"capability":"file_operation","params":{"action":"create_folder","folder_name":"OS Notes"},"reply":""}
+
+{
+  "capability": "file_operation",
+  "params": {
+    "action": "create_folder",
+    "folder_name": "OS Notes",
+    "location": "home"
+  },
+  "reply": ""
+}
+
+User: Create a folder called Hackathon on my desktop
+
+{
+  "capability": "file_operation",
+  "params": {
+    "action": "create_folder",
+    "folder_name": "Hackathon",
+    "location": "desktop"
+  },
+  "reply": ""
+}
+
+User: Open Chrome
+
+{
+  "capability": "file_operation",
+  "params": {
+    "action": "open_app",
+    "name": "chrome"
+  },
+  "reply": ""
+}
+
+User: Open calculator
+
+{
+  "capability": "file_operation",
+  "params": {
+    "action": "open_app",
+    "name": "calculator"
+  },
+  "reply": ""
+}
+
+User: Open my presentation
+
+{
+  "capability": "file_operation",
+  "params": {
+    "action": "open_file",
+    "path": "presentation"
+  },
+  "reply": ""
+}
+
+User: Search operating system scheduling
+
+{
+  "capability": "browser_search",
+  "params": {
+    "query": "operating system scheduling"
+  },
+  "reply": ""
+}
 
 User: Explain what is on my screen
--> {"capability":"screen_context","params":{},"reply":""}
+
+{
+  "capability": "screen_context",
+  "params": {},
+  "reply": ""
+}
 
 User: Remember that I need to revise CPU scheduling
--> {"capability":"save_memory","params":{"note":"revise CPU scheduling"},"reply":""}
+
+{
+  "capability": "save_memory",
+  "params": {
+    "note": "revise CPU scheduling"
+  },
+  "reply": ""
+}
 
 User: What did I ask you to remember?
--> {"capability":"recall_memory","params":{},"reply":""}
+
+{
+  "capability": "recall_memory",
+  "params": {},
+  "reply": ""
+}
+
+Rules:
+
+- Understand natural language.
+- Do not require exact command wording.
+- Keep replies concise.
+- Never return markdown.
+- Return valid JSON only.
 """
 
 
-# ---------------- AI FUNCTIONS ----------------
-
-def ask_ai(user_message):
-    response = client.models.generate_content(
-        model="gemini-3.6-flash",
-        contents=user_message
-    )
-
-    return response.text
-
+# ==========================================
+# CAPABILITY DECISION
+# ONE GEMINI CALL ONLY
+# ==========================================
 
 def decide_capability(user_message):
-    response = client.models.generate_content(
-        model="gemini-3.6-flash",
-        contents=SYSTEM_PROMPT + "\n\nUser: " + user_message
-    )
-
-    raw = response.text.strip()
 
     try:
+
+        response = client.models.generate_content(
+            model=MODEL,
+            contents=SYSTEM_PROMPT + "\n\nUser: " + user_message,
+            config={
+                "temperature": 0.2,
+                "max_output_tokens": 300
+            }
+        )
+
+        raw = response.text.strip()
+
+        # Remove markdown code fences
+        if raw.startswith("```"):
+            raw = raw.replace("```json", "")
+            raw = raw.replace("```", "")
+            raw = raw.strip()
+
         return json.loads(raw)
 
-    except json.JSONDecodeError:
+    except Exception as error:
+
         return {
             "capability": "general_answer",
             "params": {},
-            "reply": raw
+            "reply": f"Sorry, I couldn't process that request: {error}"
         }
 
 
-# ---------------- MEMORY ----------------
+# ==========================================
+# MEMORY
+# ==========================================
 
 def save_memory(params):
+
     note = params.get("note", "").strip()
 
     if not note:
         return "I need something to remember."
 
     connection = sqlite3.connect(DB_PATH)
+
     cursor = connection.cursor()
 
     cursor.execute(
@@ -133,7 +270,9 @@ def save_memory(params):
 
 
 def recall_memory(params):
+
     connection = sqlite3.connect(DB_PATH)
+
     cursor = connection.cursor()
 
     cursor.execute(
@@ -152,37 +291,69 @@ def recall_memory(params):
     return "I remember: " + "; ".join(notes)
 
 
-# ---------------- CAPABILITY MAP ----------------
+# ==========================================
+# CAPABILITY MAP
+# ==========================================
 
 CAPABILITY_MAP = {
-    "screen_context": tools.screen_context,
-    "browser_search": tools.browser_search,
-    "file_operation": tools.file_operation,
-    "vtop_action": tools.vtop_action,
-    "save_memory": save_memory,
-    "recall_memory": recall_memory,
+
+    "screen_context":
+        tools.screen_context,
+
+    "browser_search":
+        tools.browser_search,
+
+    "file_operation":
+        tools.file_operation,
+
+    "vtop_action":
+        tools.vtop_action,
+
+    "save_memory":
+        save_memory,
+
+    "recall_memory":
+        recall_memory,
 }
 
 
-# ---------------- ROUTER ----------------
+# ==========================================
+# MAIN REQUEST HANDLER
+# ==========================================
 
 def handle_request(user_message):
 
-    status = []
+    status = [
+        "Understanding request..."
+    ]
 
-    status.append("Understanding request...")
-
+    # ONE Gemini request
     decision = decide_capability(user_message)
 
     status.append("Planning actions...")
 
-    capability = decision.get("capability")
-    params = decision.get("params", {})
+    capability = decision.get(
+        "capability",
+        "general_answer"
+    )
+
+    params = decision.get(
+        "params",
+        {}
+    )
+
+    reply = decision.get(
+        "reply",
+        ""
+    )
+
+    # ======================================
+    # GENERAL QUESTION
+    # ======================================
 
     if capability == "general_answer":
+
         status.append("Generating answer...")
-        reply = decision.get("reply") or ask_ai(user_message)
-        status.append("Verifying result...")
         status.append("Task completed")
 
         return {
@@ -191,30 +362,65 @@ def handle_request(user_message):
             "status": status
         }
 
+    # ======================================
+    # TOOL CAPABILITY
+    # ======================================
+
     func = CAPABILITY_MAP.get(capability)
 
     if func:
-        status.append(f"Using {capability}...")
-        result = func(params)
 
-        status.append("Observing result...")
-        status.append("Verifying result...")
-        status.append("Task completed")
+        status.append(
+            f"Using {capability}..."
+        )
 
-        return {
-            "reply": result,
-            "capability": capability,
-            "status": status
-        }
+        try:
+
+            result = func(params)
+
+            status.append("Observing result...")
+            status.append("Verifying result...")
+            status.append("Task completed")
+
+            return {
+                "reply": result,
+                "capability": capability,
+                "status": status
+            }
+
+        except Exception as error:
+
+            status.append("Task failed")
+
+            return {
+                "reply": f"Task failed: {error}",
+                "capability": capability,
+                "status": status
+            }
+
+    # ======================================
+    # UNKNOWN CAPABILITY
+    # ======================================
 
     return {
-        "reply": f"Capability '{capability}' is not connected yet.",
-        "capability": capability,
-        "status": ["Understanding request...", "Capability not connected"]
+
+        "reply":
+            f"Capability '{capability}' is not connected yet.",
+
+        "capability":
+            capability,
+
+        "status": [
+            "Understanding request...",
+            "Capability not connected"
+        ]
     }
 
 
-# ---------------- UI FUNCTION ----------------
+# ==========================================
+# API ENTRY POINT
+# ==========================================
 
 def process_user_message(user_message):
+
     return handle_request(user_message)
