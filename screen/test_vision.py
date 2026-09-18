@@ -6,7 +6,7 @@ def run_tests():
     
     # IMPORTANT: Update this path if you are on Windows and Tesseract is installed elsewhere.
     # Example: tesseract_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-    tesseract_path = None 
+    tesseract_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe" 
     
     vision = SecureVisionModule(tesseract_cmd_path=tesseract_path)
     
