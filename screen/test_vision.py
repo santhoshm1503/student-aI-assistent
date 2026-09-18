@@ -1,22 +1,23 @@
 from screen_vision import SecureVisionModule
+import os
 
-def run_local_test():
-    print("--- TEST 1: SCREEN READING ---")
-    print("INFO: Vision Module -> Booting engine and targeting local 'tesseract_engine' folder...")
+def run_tests():
+    print("Initializing Vision Engine...")
     
-    # Initialize without needing to pass a hardcoded path
-    vision_engine = SecureVisionModule()
+    # IMPORTANT: Update this path if you are on Windows and Tesseract is installed elsewhere.
+    # Example: tesseract_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+    tesseract_path = None 
     
-    print("INFO: Vision Module -> Capturing screen data...")
-    print("INFO: Vision Module -> Executing OCR extraction...\n")
+    vision = SecureVisionModule(tesseract_cmd_path=tesseract_path)
     
-    # Execute the capture
-    result = vision_engine.capture_screen()
+    print("\n--- TEST 1: SCREEN READING ---")
+    screen_result = vision.get_context(source_type="screen")
+    print(f"Result:\n{screen_result}")
     
-    print("Result:")
-    print("-" * 40)
-    print(result)
-    print("-" * 40)
+    # Test 2: PDF Reading (Requires a test PDF in the same folder)
+    # print("\n--- TEST 2: PDF READING ---")
+    # pdf_result = vision.get_context(source_type="pdf", file_path="sample.pdf")
+    # print(f"Result:\n{pdf_result}")
 
 if __name__ == "__main__":
-    run_local_test()
+    run_tests()
