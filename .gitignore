@@ -1,0 +1,6 @@
+.env
+ai/.env
+.venv/
+__pycache__/
+*.pyc
+ai/memory.db
